@@ -20,7 +20,7 @@ router.get("/lawyerProfile", verifyToken, async (req, res) => {
 });
 
 // Get All Lawyers from admin panel: DONE
-router.get("/all-lawyers", verifyToken, async (req, res) => {
+router.get("/all-lawyers", verifyToken, verifyAdmin, async (req, res) => {
     const cursor = lawyerCollection.find();
     const result = (await cursor.toArray());
     res.send(result);
@@ -34,7 +34,7 @@ router.post("/add-lawyer", verifyToken, verifyAdmin, async (req, res) => {
 });
 
 // Delete a lawyer by email from admin panel: DONE
-router.delete("/remove-lawyer/:email", verifyToken, async (req, res) => {
+router.delete("/remove-lawyer/:email", verifyToken, verifyAdmin, async (req, res) => {
     const { email } = req.params;
     const result = await lawyerCollection.deleteOne({ email: email });
 
