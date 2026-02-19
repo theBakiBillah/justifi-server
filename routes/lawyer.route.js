@@ -117,4 +117,11 @@ router.patch("/update-availability/:email", async (req, res) => {
   });
 });
 
+// Get lawyer availability
+router.get("/availability/:email", async (req, res) => {
+  const { email } = req.params;
+  const availability = await lawyerAvailabilityCollection.findOne({ email });
+  res.send(availability);
+});
+
 module.exports = router;
