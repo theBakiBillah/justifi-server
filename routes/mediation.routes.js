@@ -200,6 +200,33 @@ router.get("/my-mediations/:id", verifyToken, async (req, res) => {
     }
 });
 
+router.get("/mediator/email/:email", verifyToken, async (req, res) => {
+    try {
+        const email = req.params.email?.toLowerCase().trim();
+
+        if (!email) {
+            return res.status(400).json({ success: false, error: "Email is required" });
+        }
+
+        const mediator = await mediatorCollection.findOne({ email });
+
+        if (!mediator) {
+            return res.status(404).json({
+                success: false,
+                error: `No mediator found with email: ${email}`,
+            });
+        }
+
+        return res.status(200).json({ success: true, mediator });
+    } catch (error) {
+        console.error("Error in GET /mediator/email/:email:", error);
+        return res.status(500).json({
+            success: false,
+            error: "Failed to fetch mediator",
+            message: error.message,
+        });
+    }
+});
 
 router.patch("/mediation-agreement", verifyToken, async (req, res) => {
     try {
