@@ -38,4 +38,42 @@ router.get("/userProfile", verifyToken, async (req, res) => {
     res.send(user);
 });
 
+
+// PATCH: update user profile info by email 
+router.patch("/userProfile/:id",verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email, ...updateData } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "Email is required to update the user profile",
+      });
+    }
+
+    const result = await userCollection.updateOne(
+      { email },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `User (${id}) profile updated successfully`,
+    });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    res.status(500).json({
+      success: false,
+      error: "Server error while updating user profile",
+    });
+  }
+});
 module.exports = router;
