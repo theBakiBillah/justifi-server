@@ -138,8 +138,8 @@ router.post("/agreementStore", agreement.single("file"), async (req, res) => {
 // view the agreement 
 router.get("/agreement/file/:arbitrationId", async (req, res) => {
   try {
-    console.log("Params:", req.params); 
-    console.log("Query:", req.query); 
+   // console.log("Params:", req.params); 
+    //console.log("Query:", req.query); 
     
     const { arbitrationId } = req.params;
     let { email } = req.query;
@@ -150,60 +150,60 @@ router.get("/agreement/file/:arbitrationId", async (req, res) => {
     }
     
     email = email.trim();
-    console.log("Processed email:", email);
+   // console.log("Processed email:", email);
 
     // 1️⃣ Arbitration exist check
     const arbitration = await arbitration_filesCollection.findOne({ arbitrationId });
     if (!arbitration) {
-      console.log("Arbitration not found:", arbitrationId);
+      //console.log("Arbitration not found:", arbitrationId);
       return res.status(404).json({ message: "Arbitration not found" });
     }
-    console.log("Arbitration found:", arbitrationId);
+   // console.log("Arbitration found:", arbitrationId);
 
-    // 2️⃣ User check
-    const user = await userCollection.findOne({ email });
-    if (!user) {
-      console.log("User not found:", email);
-      return res.status(404).json({ message: "User not found" });
-    }
-    console.log("User found:", email, "Role:", user.role);
+    // // 2️⃣ User check
+    // const user = await userCollection.findOne({ email });
+    // if (!user) {
+    //   console.log("User not found:", email);
+    //   return res.status(404).json({ message: "User not found" });
+    // }
+    // console.log("User found:", email, "Role:", user.role);
 
     // 3️⃣ Agreement exist check (get the latest agreement file)
-    console.log("Agreement files:", arbitration.agreementFiles?.length || 0);
+   // console.log("Agreement files:", arbitration.agreementFiles?.length || 0);
     const agreementFile = arbitration.agreementFiles?.sort((a, b) => 
       new Date(b.uploadedAt) - new Date(a.uploadedAt)
     )[0];
     
     if (!agreementFile) {
-      console.log("Agreement file not found for arbitration:", arbitrationId);
+      //console.log("Agreement file not found for arbitration:", arbitrationId);
       return res.status(404).json({ message: "Agreement file not found" });
     }
     
-    console.log("Agreement file found:", agreementFile.fileName);
-    console.log("File path:", agreementFile.filePath);
+   // console.log("Agreement file found:", agreementFile.fileName);
+    //console.log("File path:", agreementFile.filePath);
 
-    // 4️⃣ Access check (admin / plaintiff / defendant)
-    const isPlaintiff = arbitration.plaintiffDocuments?.some(p => p.email === email);
-    const isDefendant = arbitration.defendantDocuments?.some(d => d.email === email);
+    // // 4️⃣ Access check (admin / plaintiff / defendant)
+    // const isPlaintiff = arbitration.plaintiffDocuments?.some(p => p.email === email);
+    // const isDefendant = arbitration.defendantDocuments?.some(d => d.email === email);
     
-    console.log("Access check - isPlaintiff:", isPlaintiff, "isDefendant:", isDefendant, "isAdmin:", user.role === "admin");
+    // console.log("Access check - isPlaintiff:", isPlaintiff, "isDefendant:", isDefendant, "isAdmin:", user.role === "admin");
 
-    if (user.role !== "admin" && !isPlaintiff && !isDefendant) {
-      console.log("Unauthorized access attempt by:", email);
-      return res.status(403).json({ message: "Unauthorized: You don't have permission to view this agreement" });
-    }
+    // if (user.role !== "admin" && !isPlaintiff && !isDefendant) {
+    //   console.log("Unauthorized access attempt by:", email);
+    //   return res.status(403).json({ message: "Unauthorized: You don't have permission to view this agreement" });
+    // }
 
     // Check if file exists on disk
     const fs = require('fs');
     const fullPath = path.resolve(agreementFile.filePath);
-    console.log("Checking if file exists at:", fullPath);
+    //console.log("Checking if file exists at:", fullPath);
     
     if (!fs.existsSync(fullPath)) {
-      console.log("File does not exist on disk:", fullPath);
+     // console.log("File does not exist on disk:", fullPath);
       return res.status(404).json({ message: "File not found on server" });
     }
     
-    console.log("File exists, sending file...");
+   // console.log("File exists, sending file...");
     
     // Set proper headers
     res.setHeader('Content-Type', agreementFile.mimeType || 'application/pdf');
@@ -245,7 +245,7 @@ router.get("/agreement/download/:arbitrationId", verifyToken, async (req, res) =
 router.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const { arbitrationId, email } = req.body;
-
+    console.log(req.body); 
     if (!arbitrationId || !email) {
       return res.status(400).json({ message: "arbitrationId and email required" });
     }
@@ -304,6 +304,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     };
 
     // 7️⃣ Save to arbitration_filesCollection (same logic as before)
+    // 7️⃣ Save to arbitration_filesCollection properly
     let doc = await arbitration_filesCollection.findOne({ arbitrationId });
 
     if (!doc) {
@@ -320,23 +321,63 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     }
 
     if (role === "plaintiff") {
-      await arbitration_filesCollection.updateOne(
-        { arbitrationId, "plaintiffDocuments.partyId": partyId },
-        {
-          $push: { "plaintiffDocuments.$.files": fileData },
-          $set: { updatedAt: new Date() }
-        }
-      );
+
+      const existingParty = doc.plaintiffDocuments?.find(p => p.partyId === partyId);
+
+      if (!existingParty) {
+        // Create party first
+        await arbitration_filesCollection.updateOne(
+          { arbitrationId },
+          {
+            $push: {
+              plaintiffDocuments: {
+                partyId,
+                name,
+                files: [fileData]
+              }
+            },
+            $set: { updatedAt: new Date() }
+          }
+        );
+      } else {
+        // Push file to existing party
+        await arbitration_filesCollection.updateOne(
+          { arbitrationId, "plaintiffDocuments.partyId": partyId },
+          {
+            $push: { "plaintiffDocuments.$.files": fileData },
+            $set: { updatedAt: new Date() }
+          }
+        );
+      }
     }
 
     if (role === "defendant") {
-      await arbitration_filesCollection.updateOne(
-        { arbitrationId, "defendantDocuments.partyId": partyId },
-        {
-          $push: { "defendantDocuments.$.files": fileData },
-          $set: { updatedAt: new Date() }
-        }
-      );
+
+      const existingParty = doc.defendantDocuments?.find(d => d.partyId === partyId);
+
+      if (!existingParty) {
+        await arbitration_filesCollection.updateOne(
+          { arbitrationId },
+          {
+            $push: {
+              defendantDocuments: {
+                partyId,
+                name,
+                files: [fileData]
+              }
+            },
+            $set: { updatedAt: new Date() }
+          }
+        );
+      } else {
+        await arbitration_filesCollection.updateOne(
+          { arbitrationId, "defendantDocuments.partyId": partyId },
+          {
+            $push: { "defendantDocuments.$.files": fileData },
+            $set: { updatedAt: new Date() }
+          }
+        );
+      }
     }
 
     res.status(200).json({
@@ -353,6 +394,7 @@ router.post("/upload", upload.single("file"), async (req, res) => {
 //user get own arbitration file 
 router.get("/files", async (req, res) => {
   try {
+    //console.log("get file",req.query); 
     const { arbitrationId, email } = req.query;
 
     if (!arbitrationId || !email) {
@@ -379,7 +421,7 @@ router.get("/files", async (req, res) => {
         partyId = defendant.id;
       }
     }
-
+    //console.log(role, partyId); 
     if (!role) {
       return res.status(403).json({ message: "User not part of this arbitration" });
     }
@@ -389,7 +431,7 @@ router.get("/files", async (req, res) => {
     if (!filesDoc) {
       return res.status(404).json({ message: "No files found" });
     }
-
+    //console.log(filesDoc); 
     let userFiles = [];
 
     if (role === "plaintiff") {
@@ -489,7 +531,7 @@ router.delete("/deleteFile", async (req, res) => {
       fileName
     );
 
-    console.log("Trying to delete local file at:", filePath);
+    //console.log("Trying to delete local file at:", filePath);
 
     // 5️⃣ Check file exists in local storage
     if (!fs.existsSync(filePath)) {
@@ -498,7 +540,7 @@ router.delete("/deleteFile", async (req, res) => {
 
     // 6️⃣ Delete local file
     await fs.promises.unlink(filePath);
-    console.log("Local file deleted:", filePath);
+    //console.log("Local file deleted:", filePath);
 
     // 7️⃣ Remove from DB array
     party.files.splice(fileIndex, 1);
@@ -522,6 +564,7 @@ router.delete("/deleteFile", async (req, res) => {
 //User Download own arbitration file
 router.get("/viewFile", async (req, res) => {
   try {
+   // console.log(req.query); 
     const { arbitrationId, email, fileName } = req.query;
 
     if (!arbitrationId || !email || !fileName) {
@@ -586,7 +629,7 @@ router.get("/viewFile", async (req, res) => {
       fileName
     );
 
-    console.log("View file path:", filePath);
+    //console.log("View file path:", filePath);
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: "File not found in local storage" });
@@ -669,7 +712,7 @@ router.get("/downloadFile", async (req, res) => {
       fileName
     );
 
-    console.log("Download file path:", filePath);
+    //console.log("Download file path:", filePath);
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: "File not found in local storage" });
