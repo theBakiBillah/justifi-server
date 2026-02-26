@@ -344,7 +344,7 @@ router.patch("/create-mediation-session/:id", verifyToken, async (req, res) => {
             { _id: parseId(caseId) },
             { 
                 $push: { sessions: newSession },
-                $set: { lastUpdated: new Date() }
+                $set: { lastUpdated: new Date(), mediation_status: 'ongoing' }
             }
         );
 
