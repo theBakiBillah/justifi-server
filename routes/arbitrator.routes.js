@@ -529,7 +529,7 @@ router.delete('/hearingsDelete/:hearingId', async (req, res) => {
             hearingId: hearingId.trim()
         });
 
-        console.log("Found in DB:", existing);
+       // console.log("Found in DB:", existing);
 
         if (!existing) {
             return res.status(404).json({
@@ -1040,7 +1040,7 @@ router.get('/hearings/status/scheduled', verifyToken, async (req, res) => {
             ]
         }).toArray();
 
-        console.log(`2. Found ${arbitrations.length} arbitrations for email:`, email);
+       // console.log(`2. Found ${arbitrations.length} arbitrations for email:`, email);
 
         if (!arbitrations || arbitrations.length === 0) {
             return res.json({

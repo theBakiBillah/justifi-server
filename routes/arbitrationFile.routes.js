@@ -12,7 +12,6 @@ const { ObjectId } = require('mongodb');
 const arbitration_filesCollection = client.db("justiFi").collection("arbitration_files");
 const userCollection = client.db("justiFi").collection("users");
 const arbitrationCollection = client.db("justiFi").collection("arbitrations");
-
 // GET all files
 router.get("/allArbitrationFile", async (req, res) => {
   try {
@@ -24,22 +23,52 @@ router.get("/allArbitrationFile", async (req, res) => {
   }
 });
  
-// Upload agreement file by admin
+// Upload agreement file by admin (mehedi)
 router.post("/agreementStore", agreement.single("file"), async (req, res) => {
   try {
-    let { arbitrationId, role, caseId } = req.body;
+    console.log("=== /agreementStore hit ===");
+    console.log("req.body:", req.body);
+    console.log("req.file:", req.file ? `${req.file.originalname} (${req.file.size} bytes)` : "UNDEFINED");
+
+    let { role, caseId } = req.body;
 
     // Clean up
     role = role?.trim().toLowerCase();
-    arbitrationId = arbitrationId?.trim();
     caseId = caseId?.trim();
 
-    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    // Get arbitrationId from arbitration collection using caseId
+    const arbitrationData = await arbitrationCollection.findOne({ caseId });
+    if (!arbitrationData) {
+      return res.status(404).json({ message: "Arbitration not found for this caseId" });
+    }
+    const arbitrationId = arbitrationData.arbitrationId;
+    console.log("paisiiii mamaaa", arbitrationId)
+    if (!req.file) {
+      console.log("ERROR: No file in request");
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    if (!arbitrationId) {
+      return res.status(400).json({ message: "arbitrationId is required" });
+    }
+    if (role !== "admin") {
+      return res.status(403).json({ message: "Only admin can upload agreement" });
+    }
+
+    // Manually save buffer to disk (middleware uses memoryStorage)
+    const uploadDir = path.join("uploads", arbitrationId, "agreement");
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    const ext = path.extname(req.file.originalname) || ".pdf";
+    const fileName = `agreement_${Date.now()}${ext}`;
+    const filePath = path.join(uploadDir, fileName);
+
+    fs.writeFileSync(filePath, req.file.buffer);
+    console.log("File saved to:", filePath);
 
     const fileData = {
       fileTitle: req.file.originalname,
-      fileName: req.file.filename,
-      filePath: req.file.path,
+      fileName: fileName,
+      filePath: filePath,
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       uploadedAt: new Date(),
@@ -61,79 +90,76 @@ router.post("/agreementStore", agreement.single("file"), async (req, res) => {
       arbitration = await arbitration_filesCollection.findOne({ arbitrationId });
     }
 
-    // Admin upload
-    if (role === "admin") {
-      await arbitration_filesCollection.updateOne(
-        { arbitrationId },
-        {
-          $push: { agreementFiles: { ...fileData, version: (arbitration.agreementFiles?.length || 0) + 1 } },
-          $set: { updatedAt: new Date() },
-        }
-      );
-    }
+    // Push new agreement file version
+    await arbitration_filesCollection.updateOne(
+      { arbitrationId },
+      {
+        $push: { agreementFiles: { ...fileData, version: (arbitration.agreementFiles?.length || 0) + 1 } },
+        $set: { updatedAt: new Date() },
+      }
+    );
 
+    console.log("DB updated successfully");
     res.status(200).json({ message: "File uploaded and saved to DB", fileData });
   } catch (error) {
-    console.error(error);
+    console.error("agreementStore error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// //Agreement Delete By Admin only (kaj e lagai nai ekhono ei route frontend e )
+router.delete("/delete/agreement/:arbitrationId/:fileName", verifyToken, async (req, res) => {
+  try {
+    const { arbitrationId, fileName } = req.params;
+    const email = req.user.email;
 
+    // ✅ 1. Check user
+    const user = await userCollection.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-// //Agreement Delete By Admin only
-// router.delete("/delete/agreement/:arbitrationId/:fileName", verifyToken, async (req, res) => {
-//   try {
-//     const { arbitrationId, fileName } = req.params;
-//     const email = req.user.email;
+    // ✅ 2. Check admin role
+    if (user.role !== "admin") {
+      return res.status(403).json({ message: "Only admin can delete agreement" });
+    }
 
-//     // ✅ 1. Check user
-//     const user = await userCollection.findOne({ email });
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found" });
-//     }
+    // ✅ 3. Check arbitration exist
+    const arbitration = await arbitration_filesCollection.findOne({ arbitrationId });
+    if (!arbitration) {
+      return res.status(404).json({ message: "Arbitration not found" });
+    }
 
-//     // ✅ 2. Check admin role
-//     if (user.role !== "admin") {
-//       return res.status(403).json({ message: "Only admin can delete agreement" });
-//     }
+    // ✅ 4. Find agreement file
+    const agreementFile = arbitration.agreementFiles?.find(
+      f => f.fileName === fileName
+    );
 
-//     // ✅ 3. Check arbitration exist
-//     const arbitration = await arbitration_filesCollection.findOne({ arbitrationId });
-//     if (!arbitration) {
-//       return res.status(404).json({ message: "Arbitration not found" });
-//     }
+    if (!agreementFile) {
+      return res.status(404).json({ message: "Agreement file not found" });
+    }
 
-//     // ✅ 4. Find agreement file
-//     const agreementFile = arbitration.agreementFiles?.find(
-//       f => f.fileName === fileName
-//     );
+    // ✅ 5. Delete from local folder
+    if (fs.existsSync(agreementFile.filePath)) {
+      fs.unlinkSync(agreementFile.filePath);
+    }
 
-//     if (!agreementFile) {
-//       return res.status(404).json({ message: "Agreement file not found" });
-//     }
+    // ✅ 6. Remove from DB
+    await arbitration_filesCollection.updateOne(
+      { arbitrationId },
+      {
+        $pull: {
+          agreementFiles: { fileName }
+        }
+      }
+    );
 
-//     // ✅ 5. Delete from local folder
-//     if (fs.existsSync(agreementFile.filePath)) {
-//       fs.unlinkSync(agreementFile.filePath);
-//     }
+    res.json({ message: "Agreement deleted successfully" });
 
-//     // ✅ 6. Remove from DB
-//     await arbitration_filesCollection.updateOne(
-//       { arbitrationId },
-//       {
-//         $pull: {
-//           agreementFiles: { fileName }
-//         }
-//       }
-//     );
-
-//     res.json({ message: "Agreement deleted successfully" });
-
-//   } catch (error) {
-//     res.status(500).json({ error: error.message });
-//   }
-// });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 
 // view the agreement 

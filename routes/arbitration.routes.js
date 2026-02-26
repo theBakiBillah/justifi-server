@@ -300,7 +300,6 @@ router.patch("/arbitration-agreement", verifyToken, async (req, res) => {
     const { data } = req.body;
     const caseId = data.caseId;
     data.arbitration_status = "Ongoing";
-
     try {
         const result = await arbitrationCollection.updateOne(
             { _id: new ObjectId(caseId) },
@@ -656,5 +655,43 @@ router.get("/email/:email", async (req, res) => {
 
 // arbitration agreement file upload by admin pannel
 
+
+router.delete('/deleteArbitrations/:arbitrationId', async (req, res) => {
+    try {
+        const { arbitrationId } = req.params;
+
+        console.log("Param received:", arbitrationId);
+
+        // First check if exists
+        const existing = await arbitrationCollection.findOne({
+            arbitrationId: arbitrationId.trim()
+        });
+
+       // console.log("Found in DB:", existing);
+
+        if (!existing) {
+            return res.status(404).json({
+                success: false,
+                message: "arbitration not found"
+            });
+        }
+
+        await arbitrationCollection.deleteOne({
+            arbitrationId: arbitrationId.trim()
+        });
+
+        res.json({
+            success: true,
+            message: "arbitration deleted successfully"
+        });
+
+    } catch (error) {
+        console.error("Delete error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error"
+        });
+    }
+});
 
 module.exports = router;
