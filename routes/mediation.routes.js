@@ -292,4 +292,149 @@ router.patch("/mediation-agreement", verifyToken, async (req, res) => {
     }
 });
 
+
+//! new mediation session creation route - PATCH /create-mediation-session/:id
+router.patch("/create-mediation-session/:id", verifyToken, async (req, res) => {
+    try {
+        const caseId = req.params.id;
+        const { 
+            sessionDateTime, 
+            meetingLink, 
+            sessionType, 
+            notes, 
+            participantEmails 
+        } = req.body;
+
+        // Validate required fields
+        if (!sessionDateTime || !meetingLink) {
+            return res.status(400).json({ 
+                success: false, 
+                error: "Session date/time and meeting link are required" 
+            });
+        }
+
+        // Find the mediation
+        const mediation = await mediationCollection.findOne({ _id: parseId(caseId) });
+
+        if (!mediation) {
+            return res.status(404).json({ 
+                success: false, 
+                error: "Mediation not found" 
+            });
+        }
+
+        // Check if user has permission (optional - depending on your auth logic)
+        // You might want to verify that only authorized users (like admins or arbitrators) can create sessions
+
+        // Create session object
+        const newSession = {
+            _id: new ObjectId(), // Generate a unique ID for the session
+            dateTime: new Date(sessionDateTime),
+            meetingLink: meetingLink,
+            sessionType: sessionType || 'initial', // Default to 'initial' if not provided
+            notes: notes || '',
+            status: 'scheduled', // or 'pending', 'confirmed', etc.
+            createdAt: new Date(),
+            createdBy: req.user?.email || 'system', // Assuming you have user info from verifyToken
+        };
+
+        // Add session to mediation document
+        // Assuming you have a 'sessions' array in your mediation schema
+        const result = await mediationCollection.updateOne(
+            { _id: parseId(caseId) },
+            { 
+                $push: { sessions: newSession },
+                $set: { lastUpdated: new Date() }
+            }
+        );
+
+        if (result.modifiedCount === 0) {
+            return res.status(500).json({ 
+                success: false, 
+                error: "Failed to create session" 
+            });
+        }
+
+        // Send notifications to participants
+        if (participantEmails && participantEmails.length > 0) {
+            try {
+                await sendSessionNotifications({
+                    session: newSession,
+                    participantEmails,
+                    mediationId: caseId,
+                    caseNumber: mediation.caseNumber // if you have case numbers
+                });
+            } catch (notificationError) {
+                console.error("Error sending notifications:", notificationError);
+                // Continue even if notifications fail - session was created successfully
+            }
+        }
+
+        return res.status(200).json({ 
+            success: true, 
+            data: newSession,
+            message: "Mediation session created successfully" 
+        });
+
+    } catch (error) {
+        console.error("Error in PATCH /create-mediation-session/:id:", error);
+        return res.status(500).json({ 
+            success: false, 
+            error: "Failed to create mediation session", 
+            message: error.message 
+        });
+    }
+});
+
+// Helper function for sending notifications (you'll need to implement this)
+async function sendSessionNotifications({ session, participantEmails, mediationId, caseNumber }) {
+    // Implement your email notification logic here
+    // This could use nodemailer, SendGrid, AWS SES, etc.
+    
+    const emailPromises = participantEmails.map(email => {
+        // Send email to each participant
+        return sendEmail({
+            to: email,
+            subject: `New Mediation Session Scheduled - Case ${caseNumber || mediationId}`,
+            html: `
+                <h2>Mediation Session Scheduled</h2>
+                <p>A new mediation session has been scheduled:</p>
+                <ul>
+                    <li><strong>Date & Time:</strong> ${session.dateTime.toLocaleString()}</li>
+                    <li><strong>Meeting Link:</strong> <a href="${session.meetingLink}">${session.meetingLink}</a></li>
+                    <li><strong>Session Type:</strong> ${session.sessionType}</li>
+                    ${session.notes ? `<li><strong>Notes:</strong> ${session.notes}</li>` : ''}
+                </ul>
+                <p>Please join the meeting at the scheduled time using the link above.</p>
+            `
+        });
+    });
+
+    await Promise.all(emailPromises);
+}
+
+// Helper function to send individual emails (implement based on your email service)
+async function sendEmail({ to, subject, html }) {
+    // Implement your email sending logic here
+    // Example with nodemailer:
+    /*
+    const transporter = nodemailer.createTransport({
+        host: process.env.EMAIL_HOST,
+        port: process.env.EMAIL_PORT,
+        secure: false,
+        auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+        },
+    });
+
+    await transporter.sendMail({
+        from: process.env.EMAIL_FROM,
+        to,
+        subject,
+        html,
+    });
+    */
+    console.log(`Email would be sent to ${to} with subject: ${subject}`);
+}
 module.exports = router;
