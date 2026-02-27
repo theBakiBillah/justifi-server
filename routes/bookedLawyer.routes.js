@@ -258,4 +258,120 @@ router.patch("/appointments/:id", verifyToken, async (req, res) => {
 
 //meeeeeee start code for ssl
 
+
+// POST /appointments/:id/feedback
+// User submits feedback after their appointment
+router.post("/appointments/:id/feedback", verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            rating,
+            qualities,
+            improvements,
+            recommend,
+            additional,
+            lawyerEmail,
+            submittedAt,
+        } = req.body;
+
+        // Validate
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: "Invalid appointment ID" });
+        }
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ success: false, message: "Rating must be 1–5" });
+        }
+        if (recommend === null || recommend === undefined) {
+            return res.status(400).json({ success: false, message: "Recommendation is required" });
+        }
+
+        // Check appointment exists
+        const appointment = await bookedLawyerCollection.findOne({
+            _id: new ObjectId(id),
+        });
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found" });
+        }
+        if (!["confirmed", "completed"].includes(appointment.status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Feedback can only be submitted for confirmed or completed appointments",
+            });
+        }
+        if (appointment.feedback) {
+            return res.status(400).json({ success: false, message: "Feedback already submitted" });
+        }
+
+        // Save feedback inside booking document
+        await bookedLawyerCollection.updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $set: {
+                    feedback: {
+                        rating,
+                        qualities:    qualities    || [],
+                        improvements: improvements || [],
+                        recommend,
+                        additional:   additional   || null,
+                        submittedAt:  submittedAt  || new Date().toISOString(),
+                    },
+                    updatedAt: new Date().toISOString(),
+                },
+            }
+        );
+
+        // Update lawyer's rolling average rating
+        const lawyerDoc = await lawyers.findOne({ email: lawyerEmail });
+        if (lawyerDoc) {
+            const oldRating    = lawyerDoc.rating      || 0;
+            const reviewCount  = lawyerDoc.reviewCount || 0;
+            const newRating    = reviewCount > 0
+                ? ((oldRating * reviewCount) + rating) / (reviewCount + 1)
+                : rating;
+
+            await lawyers.updateOne(
+                { email: lawyerEmail },
+                {
+                    $set: { rating: Math.round(newRating * 10) / 10 },
+                    $inc: { reviewCount: 1 },
+                }
+            );
+        }
+
+        res.json({ success: true, message: "Feedback submitted successfully" });
+    } catch (error) {
+        console.error("POST feedback error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+
+// GET /appointments/:id/feedback
+// Get feedback for a specific appointment
+router.get("/appointments/:id/feedback", verifyToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log(id); 
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: "Invalid appointment ID" });
+        }
+
+        const appointment = await bookedLawyerCollection.findOne(
+            { _id: new ObjectId(id) },
+            { projection: { feedback: 1 } }
+        );
+
+        if (!appointment) {
+            return res.status(404).json({ success: false, message: "Appointment not found" });
+        }
+        if (!appointment.feedback) {
+            return res.status(404).json({ success: false, message: "No feedback found" });
+        }
+
+        res.json({ success: true, data: appointment.feedback });
+    } catch (error) {
+        console.error("GET feedback error:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 module.exports = router;

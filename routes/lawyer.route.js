@@ -6,15 +6,14 @@ const verifyToken = require("../middleware/verifyToken");
 const verifyAdmin = require("../middleware/verifyAdmin");
 
 const lawyerCollection = client.db("justiFi").collection("lawyers");
-const lawyerAvailabilityCollection = client
-  .db("justiFi")
-  .collection("lawyerAvailability");
+const lawyerAvailabilityCollection = client.db("justiFi").collection("lawyerAvailability");
 
 router.get("/lawyers", async (req, res) => {
   const cursor = lawyerCollection.find();
   const result = await cursor.toArray();
   res.send(result);
 });
+
 
 router.get("/lawyerProfile", verifyToken, async (req, res) => {
   const { email } = req.query;
@@ -97,7 +96,6 @@ router.patch("/lawyerProfile/:email", verifyToken, async (req, res) => {
 router.patch("/update-availability/:email", async (req, res) => {
   const { email } = req.params;
   const availability = req.body;
-
   const result = await lawyerAvailabilityCollection.updateOne(
     { email: email },
     { $set: { availability } },

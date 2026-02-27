@@ -12,24 +12,19 @@ const hearingsCollection=client.db("justiFi").collection("hearings");
 const arbitration_filesCollection = client.db("justiFi").collection("arbitration_files");
 
 router.get("/arbitrators", async (req, res) => {
-    const cursor = await arbitratorCollection.find();
+    const cursor =  arbitratorCollection.find();
     const result = await cursor.toArray();
     res.send(result);
 });
 
 
 router.get("/hearings", async (req, res) => {
-    const cursor =await hearingsCollection.find();
+    const cursor = hearingsCollection.find();
     const result = await cursor.toArray();
     res.send(result);
 });
 
-// Get All Arbitrators from admin panel
-router.get("/all-arbitrators", verifyToken, async (req, res) => {
-    const cursor =await arbitratorCollection.find();
-    const result = await cursor.toArray();
-    res.send(result);
-});
+
 
 // Get arbitrator by email (public)
 router.get("/email/:email", async (req, res) => {
